@@ -2,12 +2,14 @@
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
+#include <time.h>    // for srand().
 
 #define	MAXSAMPLE	1000
-#define	MAXSTATE	4
+#define	MAXSTATE	6     // 4 -> 6.
 #define	MAXSYMBOL	10
 #define	MAXLEN		512
 #define	ERROR		0.01
+#define MIN_PROB	1e-100    // small value to avoid divison by zero.
 
 /*
 a[i][j] : transition probability from the state i to j
@@ -30,6 +32,9 @@ double	alpha[MAXSAMPLE][MAXLEN][MAXSTATE];
 double	beta[MAXSAMPLE][MAXLEN][MAXSTATE];
 double	c[MAXSAMPLE][MAXLEN][MAXSTATE][MAXSTATE];
 int	o[MAXSAMPLE][MAXLEN];
+double scale[MAXSAMPLE][MAXLEN];    // scale value.
+double total_log_lik;    
+double gamma_val[MAXSAMPLE][MAXLEN][MAXSTATE];
 
 int HMMprint(char *mn)
 {
