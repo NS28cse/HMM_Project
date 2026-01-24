@@ -165,14 +165,16 @@ double viterbi(int samplenum)
 
 int main(int argc, char *argv[])
 {
-	if (argc < 4) {
-    	printf("Usage: %s [SampleName] [OutputDir] [TargetModelFile]\n", argv[0]);
+	if (argc < 6) {
+    	printf("Usage: %s [SampleName] [OutputDir] [TargetModelFile] [States] [Seed]\n", argv[0]);
     	exit(1);
 	}
 	char *sampledirname = argv[1];
-	char *output_dir = argv[2];
+	char *outputdir = argv[2];
 	char *markovfilename = argv[3];
-	// Use these variables to construct file paths later.
+	int *states = argv[4];
+	int *seed = argv[5]
+ 	// Use these variables to construct file paths later.
 
 	FILE	*samplefile;
 //	char	sampledirname[MAXLEN] = "c:/tmp/sample0";
@@ -222,7 +224,7 @@ int main(int argc, char *argv[])
 		// sprintf(tmp, "%d", i + 1)
 		// strncat(samplefilename, tmp, MAXLEN);
 		// strncat(samplefilename, "_out.txt", MAXLEN);	// samplefilename = "(sampledirname)/1234_out.txt"
-    	sprintf(samplefilename, "%s/%d_out.txt", output_dir, i + 1); // The path format: [OutputDir]/[Index]_out.txt.
+    	sprintf(samplefilename, "%s/s%d_%d_out.txt", outputdir, states, seed); // The path format: [OutputDir]/[Index]_out.txt.
 		
 		if ((samplefile = fopen(samplefilename, "w")) == NULL)
 			continue;

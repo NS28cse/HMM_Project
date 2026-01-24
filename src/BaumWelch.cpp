@@ -32,6 +32,7 @@ double	c[MAXSAMPLE][MAXLEN][MAXSTATE][MAXSTATE];
 int	o[MAXSAMPLE][MAXLEN];
 long totalLen = 0;    // count totalLen for BIC.
 int step = 0;    // count step.
+int states;
 
 int HMMprint(char *mn)
 {
@@ -268,7 +269,7 @@ int main(int argc, char *argv[])
 		samplecount++;
 		fclose(samplefile);
 	}
-
+	/*
 	// Initial setting
 	printf("Init a , b and pi\n");
 	for (i = 0; i < states; i++)
@@ -286,7 +287,38 @@ int main(int argc, char *argv[])
 		for (j = 0; j < MAXSYMBOL; j++)
 			b[i][j] /= bunbo;
 	}
+	*/
+	// Initial setting.
+	printf("Init a , b and pi with random values\n");
 
+	// Initialize pi with random values and normalize.
+	bunbo = 0;
+	for (i = 0; i < states; i++) {
+		pi[i] = (double)rand() / RAND_MAX;
+		bunbo += pi[i];
+	}
+	for (i = 0; i < states; i++) pi[i] /= bunbo;
+
+	// Initialize a (Transition probability) with random values and normalize.
+	for (i = 0; i < states; i++)
+	{
+		bunbo = 0;
+		for (j = 0; j < states; j++)
+		{
+			a[i][j] = (double)rand() / RAND_MAX;
+			bunbo += a[i][j];
+		}
+		for (j = 0; j < states; j++) a[i][j] /= bunbo;
+
+		// Initialize b (Output probability) with random values and normalize.
+		bunbo = 0;
+		for (j = 0; j < MAXSYMBOL; j++)
+		{
+			b[i][j] = (double)rand() / RAND_MAX;
+			bunbo += b[i][j];
+		}
+		for (j = 0; j < MAXSYMBOL; j++) b[i][j] /= bunbo;
+	}
 	/* Perform the first forward-backward pass to get initial alpha/beta values for Step 0. */
 	forward_algo();
 	double old_loglik = calculate_log_likelihood(samplecount, states); 

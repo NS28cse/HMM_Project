@@ -6,7 +6,7 @@ clear; clc; close all;
 
 %% Configuration
 % Define the target samples, state range, and number of seeds.
-targetSamples = {'sample0'};
+targetSamples = {'sample0', 'sample1', 'sample2', 'sample3', 'sample4'};
 stateRange = 2:6;
 numSeeds = 5; 
 % Executable paths (Assuming compiled binaries are in bin folder).
@@ -124,10 +124,9 @@ for sIdx = 1:length(targetSamples)
     fprintf('Best Model for %s: States=%d, Seed=%d (BIC=%.2f). Running Viterbi...\n', ...
         sampleName, bestModel.States, bestModel.Seed, bestModel.BIC);
     
-% Construct command for Viterbi.exe.
-    % Usage: [SampleName] [OutputDir] [ModelPath] [States] [Seed]
-    cmdViterbi = sprintf('%s %s %s %s %d %d', ...
-        exeViterbi, sampleName, viterbiDir, bestModel.ModelPath{1}, bestModel.States, bestModel.Seed);
+    % Construct command for Viterbi.exe.
+    % Usage: [SampleName] [OutputDir] [ModelPath]
+    cmdViterbi = sprintf('%s %s %s %s', exeViterbi, sampleName, viterbiDir, bestModel.ModelPath{1});
     
     [vStatus, vOut] = system(cmdViterbi);
     if vStatus ~= 0
