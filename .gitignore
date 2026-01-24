@@ -2,4 +2,6 @@ data/*
 
 !data/.gitkeep
 
-result/*
+results/*
+
+exp_src/*.asv
