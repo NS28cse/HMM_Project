@@ -26,6 +26,7 @@ double	delta[MAXSAMPLE][MAXLEN][MAXSTATE];
 int	phi[MAXSAMPLE][MAXLEN][MAXSTATE];
 int	o[MAXSAMPLE][MAXLEN];
 int	state[MAXSAMPLE][MAXLEN];
+int states;
 
 int HMMload(char *mn)
 {
@@ -136,7 +137,7 @@ double viterbi(int samplenum)
 //			.....
 			maxval = -1.0;
             maxindex = 0;
-            for (k = 0; k < MAXSTATE; k++) {
+            for (k = 0; k < states; k++) {
                 // Calculate the probability of transitioning from the previous state k to the current state j.
                 double val = delta[samplenum][i - 1][k] * a[k][j];
                 if (val > maxval) {
@@ -150,7 +151,7 @@ double viterbi(int samplenum)
             phi[samplenum][i][j] = maxindex;
 		}
 	}
-	for (outputprob = 0, k = 0; k < MAXSTATE; k++)
+	for (outputprob = 0, k = 0; k < states; k++)
 	{
 		if (delta[samplenum][maxlen[samplenum] - 1][k] > outputprob)
 		{
@@ -174,7 +175,7 @@ int main(int argc, char *argv[])
 	char *sampledirname = argv[1];
 	char *outputdir = argv[2];
 	char *markovfilename = argv[3];
-	int states = atoi(argv[4]);
+	states = atoi(argv[4]);
 	int seed = atoi(argv[5]);
  	// Use these variables to construct file paths later.
 
@@ -227,7 +228,7 @@ int main(int argc, char *argv[])
 		// sprintf(tmp, "%d", i + 1)
 		// strncat(samplefilename, tmp, MAXLEN);
 		// strncat(samplefilename, "_out.txt", MAXLEN);	// samplefilename = "(sampledirname)/1234_out.txt"
-		sprintf(samplefilename, "%s/s%d_%d_out.txt", outputdir, states, seed); // The path format: [OutputDir]/[Index]_out.txt.
+		sprintf(samplefilename, "%s/%d_out.txt", outputdir, i + 1); // The path format: [OutputDir]/[Index]_out.txt.
 
 		if ((samplefile = fopen(samplefilename, "w")) == NULL)
 			continue;

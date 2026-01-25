@@ -19,13 +19,13 @@ alpha[n][t][i] : forward probability at the state i and time t of the sample n
 beta[n][t][i] : backward probability ath teh state i and time t of the sample n
 o[n][t] : output symbol at time t of the sample n
 */
-int	maxlen[MAXSAMPLE];		/* ï¿½Tï¿½ï¿½ï¿½vï¿½ï¿½ï¿½tï¿½@ï¿½Cï¿½ï¿½ï¿½ï¿½ï¿½Æ‚Ì’ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½iï¿½[ */
+int	maxlen[MAXSAMPLE];		/* ?¿½T?¿½?¿½?¿½v?¿½?¿½?¿½t?¿½@?¿½C?¿½?¿½?¿½?¿½?¿½Æ‚Ì’ï¿½?¿½?¿½?¿½?¿½?¿½i?¿½[ */
 double	a[MAXSTATE][MAXSTATE];
-double	na[MAXSTATE][MAXSTATE];		/* aï¿½ÌXï¿½Vï¿½p */
+double	na[MAXSTATE][MAXSTATE];		/* a?¿½ÌX?¿½V?¿½p */
 double	b[MAXSTATE][MAXSYMBOL];
-double	nb[MAXSTATE][MAXSYMBOL];	/* bï¿½ÌXï¿½Vï¿½p */
+double	nb[MAXSTATE][MAXSYMBOL];	/* b?¿½ÌX?¿½V?¿½p */
 double	pi[MAXSTATE];
-double	npi[MAXSTATE];				/* piï¿½ÌXï¿½Vï¿½p */
+double	npi[MAXSTATE];				/* pi?¿½ÌX?¿½V?¿½p */
 double	alpha[MAXSAMPLE][MAXLEN][MAXSTATE];
 double	beta[MAXSAMPLE][MAXLEN][MAXSTATE];
 double	c[MAXSAMPLE][MAXLEN][MAXSTATE][MAXSTATE];
@@ -219,7 +219,7 @@ int main(int argc, char *argv[])
 {
 	char *sampledirname = argv[1];    // Store sample name.
 	char *outputdir = argv[2];     // Store output directory path.
-	int states = atoi(argv[3]);    /* Set number of states from argument. */
+	states = atoi(argv[3]);    /* Set number of states from argument. */
 	int seed = atoi(argv[4]);      /* Set random seed from argument. */
 	char outputfilename[MAXLEN];
 	sprintf(outputfilename, "%s/markov_output_s%d_%d.txt", outputdir, states, seed);
@@ -385,6 +385,7 @@ int main(int argc, char *argv[])
 				bunbo = 0;
 				for (n = 0; n < MAXSAMPLE; n++)
 				{
+					/*
 					for (k = 0; k < maxlen[n]; k++)
 					{
 						if (o[n][k] == j)
@@ -393,6 +394,29 @@ int main(int argc, char *argv[])
 						for (l = 0; l < states; l++)
 							bunbo += c[n][k][i][l];
 					}
+					*/
+					double gamma_val = 0.0;
+					// Calculation of gamma at time k
+					if (k < maxlen[n] - 1)
+					{
+						// For t < T, gamma = sum(xi)
+						for (l = 0; l < states; l++)
+							gamma_val += c[n][k][i][l];
+					}
+					else
+					{
+						// For t = T, gamma = alpha / P(O)
+						// Re-calculate P(O) (bunbo in gamma_algo) for this sample
+						double p_O = 0.0;
+						for (l = 0; l < states; l++)
+							p_O += alpha[n][k][l];
+						if (p_O != 0)
+							gamma_val = alpha[n][k][i] / p_O;
+					}
+
+					if (o[n][k] == j)
+						nb[i][j] += gamma_val;
+					bunbo += gamma_val;
 				}
 				if (bunbo == 0)
 				{
