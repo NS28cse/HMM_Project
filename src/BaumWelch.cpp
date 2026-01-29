@@ -19,13 +19,13 @@ alpha[n][t][i] : forward probability at the state i and time t of the sample n
 beta[n][t][i] : backward probability ath teh state i and time t of the sample n
 o[n][t] : output symbol at time t of the sample n
 */
-int	maxlen[MAXSAMPLE];		/* ?¿½T?¿½?¿½?¿½v?¿½?¿½?¿½t?¿½@?¿½C?¿½?¿½?¿½?¿½?¿½Æ‚Ì’ï¿½?¿½?¿½?¿½?¿½?¿½i?¿½[ */
+int	maxlen[MAXSAMPLE];		/* ?ï¿½ï¿½T?ï¿½ï¿½?ï¿½ï¿½?ï¿½ï¿½v?ï¿½ï¿½?ï¿½ï¿½?ï¿½ï¿½t?ï¿½ï¿½@?ï¿½ï¿½C?ï¿½ï¿½?ï¿½ï¿½?ï¿½ï¿½?ï¿½ï¿½?ï¿½ï¿½Æ‚Ì’ï¿½?ï¿½ï¿½?ï¿½ï¿½?ï¿½ï¿½?ï¿½ï¿½?ï¿½ï¿½i?ï¿½ï¿½[ */
 double	a[MAXSTATE][MAXSTATE];
-double	na[MAXSTATE][MAXSTATE];		/* a?¿½ÌX?¿½V?¿½p */
+double	na[MAXSTATE][MAXSTATE];		/* a?ï¿½ï¿½ÌX?ï¿½ï¿½V?ï¿½ï¿½p */
 double	b[MAXSTATE][MAXSYMBOL];
-double	nb[MAXSTATE][MAXSYMBOL];	/* b?¿½ÌX?¿½V?¿½p */
+double	nb[MAXSTATE][MAXSYMBOL];	/* b?ï¿½ï¿½ÌX?ï¿½ï¿½V?ï¿½ï¿½p */
 double	pi[MAXSTATE];
-double	npi[MAXSTATE];				/* pi?¿½ÌX?¿½V?¿½p */
+double	npi[MAXSTATE];				/* pi?ï¿½ï¿½ÌX?ï¿½ï¿½V?ï¿½ï¿½p */
 double	alpha[MAXSAMPLE][MAXLEN][MAXSTATE];
 double	beta[MAXSAMPLE][MAXLEN][MAXSTATE];
 double	c[MAXSAMPLE][MAXLEN][MAXSTATE][MAXSTATE];
@@ -151,7 +151,17 @@ void gamma_algo()
 			bunbo += alpha[n][maxlen[n] - 1][i];
 		}
 
-		if (bunbo == 0.0) continue;
+		if (bunbo == 0.0){
+            // Clear c if probability is zero to prevent stale data usage.
+            for (k = 0; k < maxlen[n] - 1; k++) {
+                for (i = 0; i < states; i++) {
+                    for (j = 0; j < states; j++) {
+                        c[n][k][i][j] = 0.0;
+                    }
+                }
+            }
+            continue;
+        }
 
 		for (k = 0; k < maxlen[n] - 1; k++) {
 			for (i = 0; i < states; i++) {
@@ -349,7 +359,7 @@ int main(int argc, char *argv[])
 				bunbo = 0;
 				for (n = 0; n < MAXSAMPLE; n++)
 				{
-					for (k = 0; k < maxlen[n]; k++)
+					for (k = 0; k < maxlen[n] - 1; k++)
 					{
 						na[i][j] += c[n][k][i][j];
 						for (l = 0; l < states; l++)
@@ -395,28 +405,30 @@ int main(int argc, char *argv[])
 							bunbo += c[n][k][i][l];
 					}
 					*/
-					double gamma_val = 0.0;
-					// Calculation of gamma at time k
-					if (k < maxlen[n] - 1)
+					for (k = 0; n < maxlen[n]; k++)
 					{
-						// For t < T, gamma = sum(xi)
-						for (l = 0; l < states; l++)
-							gamma_val += c[n][k][i][l];
+						double gamma_val = 0.0;
+						// Calculation of gamma at time k
+						if (k < maxlen[n] - 1)
+						{
+							// For t < T, gamma = sum(xi)
+							for (l = 0; l < states; l++)
+								gamma_val += c[n][k][i][l];
+						}
+						else
+						{
+							// For t = T, gamma = alpha / P(O)
+							// Re-calculate P(O) (bunbo in gamma_algo) for this sample
+							double p_O = 0.0;
+							for (l = 0; l < states; l++)
+								p_O += alpha[n][k][l];
+							if (p_O != 0)
+								gamma_val = alpha[n][k][i] / p_O;
+						}
+						if (o[n][k] == j)
+						    nb[i][j] += gamma_val;
+						bunbo += gamma_val;
 					}
-					else
-					{
-						// For t = T, gamma = alpha / P(O)
-						// Re-calculate P(O) (bunbo in gamma_algo) for this sample
-						double p_O = 0.0;
-						for (l = 0; l < states; l++)
-							p_O += alpha[n][k][l];
-						if (p_O != 0)
-							gamma_val = alpha[n][k][i] / p_O;
-					}
-
-					if (o[n][k] == j)
-						nb[i][j] += gamma_val;
-					bunbo += gamma_val;
 				}
 				if (bunbo == 0)
 				{
