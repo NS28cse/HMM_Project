@@ -227,6 +227,11 @@ double calculate_log_likelihood(int samplecount, int states) {
 
 int main(int argc, char *argv[])
 {
+	if (argc != 5) {
+		fprintf(stderr, "Usage: BaumWelch <sampleDir> <outputDir> <states> <seed>\n");
+		return 1;
+	}
+	
 	char *sampledirname = argv[1];    // Store sample name.
 	char *outputdir = argv[2];     // Store output directory path.
 	states = atoi(argv[3]);    /* Set number of states from argument. */
@@ -250,6 +255,8 @@ int main(int argc, char *argv[])
 	double	bunbo;
 	double	ibunbo[MAXSTATE];
 	double	err;
+	totalLen = 0;
+	step = 0;
 
 
 
@@ -405,29 +412,16 @@ int main(int argc, char *argv[])
 							bunbo += c[n][k][i][l];
 					}
 					*/
-					for (k = 0; n < maxlen[n]; k++)
+					for (k = 0; k < maxlen[n] - 1; k++)
 					{
-						double gamma_val = 0.0;
-						// Calculation of gamma at time k
-						if (k < maxlen[n] - 1)
-						{
-							// For t < T, gamma = sum(xi)
-							for (l = 0; l < states; l++)
-								gamma_val += c[n][k][i][l];
-						}
-						else
-						{
-							// For t = T, gamma = alpha / P(O)
-							// Re-calculate P(O) (bunbo in gamma_algo) for this sample
-							double p_O = 0.0;
-							for (l = 0; l < states; l++)
-								p_O += alpha[n][k][l];
-							if (p_O != 0)
-								gamma_val = alpha[n][k][i] / p_O;
-						}
-						if (o[n][k] == j)
-						    nb[i][j] += gamma_val;
-						bunbo += gamma_val;
+    					double gamma_val = 0.0;
+						for (l = 0; l < states; l++)
+    					    gamma_val += c[n][k][i][l];
+						
+    					if (o[n][k] == j)
+        				nb[i][j] += gamma_val;
+
+    					bunbo += gamma_val;
 					}
 				}
 				if (bunbo == 0)
@@ -507,14 +501,14 @@ int main(int argc, char *argv[])
 		step++; /* Increment step count. */
 		forward_algo(); /* Prepare alpha for likelihood calculation. */
 		double current_loglik = calculate_log_likelihood(samplecount, states);
-		printf("HISTORY %d %f %f\n", step, current_loglik, current_loglik - old_loglik); /* Print history. */
+		printf("HISTORY %d %g %g\n", step, current_loglik, fabs(current_loglik - old_loglik)); /* Print history. */
 		old_loglik = current_loglik; /* Update likelihood for next step. */
 	}
 	printf("loop end and print HMM\n");
 	sort_states(states); /* Finalize state order. */
 
 	printf("LABEL SampleName States Seed Symbols TotalLen FinalLogLik Iterations\n");
-	printf("RESULTS %s %d %d %d %ld %f %d\n", 
+	printf("RESULTS %s %d %d %d %ld %g %d\n", 
         sampledirname, states, seed, MAXSYMBOL, totalLen, old_loglik, step); /* Output final result for MATLAB. */
     
     char finalPath[MAXLEN];

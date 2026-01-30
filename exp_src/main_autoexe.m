@@ -1,208 +1,161 @@
 % main_autoexe.m
-% Automation script for HMM Baum-Welch training and Viterbi decoding.
-% This script manages directory structures, executes C++ binaries, and aggregates results.
+% Automation script for HMM Baum-Welch training, model selection,
+% and Viterbi decoding.
 
 clear; clc; close all;
 
-%=============================================================================-
-% compile.
+%% Experiment configuration.
+samples   = {'sample0', 'sample1', 'sample2', 'sample3', 'sample4'};
+stateList = 2:6;
+% Seed specification.
+% Examples:
+%   seedList = 1:50;        % range
+%   seedList = 1:2:49;      % step
+%   seedList = [3 7 42];    % explicit list
+%   seedList = 17;          % single seed
+seedList = 1:50;
 
-%% 1. Path Configuration.
-% Get the directory where this current script is located (i.e., exp_src).
-scriptPath = fileparts(mfilename('fullpath'));
+%% Path configuration.
+scriptDir = fileparts(mfilename('fullpath'));
+rootDir   = fileparts(scriptDir);
 
-% Navigate one level up to get the root directory.
-rootDir = fileparts(scriptPath);
+srcDir     = fullfile(rootDir, 'src');
+binDir     = fullfile(rootDir, 'bin');
+dataDir    = fullfile(rootDir, 'data', 'raw', 'samples');
+resultsDir = fullfile(rootDir, 'results');
 
-% Define the source and binary directories based on the root directory.
-sourceDir = fullfile(rootDir, 'src');
-binaryDir = fullfile(rootDir, 'bin');
+exeBaumWelch = fullfile(binDir, 'BaumWelch.exe');
+exeViterbi   = fullfile(binDir, 'Viterbi.exe');
 
-% List the target file names (without extensions).
-targetNames = {'BaumWelch', 'Viterbi'};
+%% Compile C++ sources.
+targets = {'BaumWelch', 'Viterbi'};
 
-%% 2. Directory Preparation.
-% Check if the binary directory exists.
-if ~exist(binaryDir, 'dir')
-    fprintf('Creating output directory: %s\n', binaryDir);
-    mkdir(binaryDir);
+if ~exist(binDir, 'dir')
+    mkdir(binDir);
 end
 
-%% 3. Compilation Loop.
-% Loop through each target to compile them separately.
-for i = 1:length(targetNames)
-    baseName = targetNames{i};
-    
-    % Define the full path for the input C++ file.
-    cppFile = fullfile(sourceDir, [baseName, '.cpp']);
-    
-    % Define the full path for the output Windows Executable file.
-    exeFile = fullfile(binaryDir, [baseName, '.exe']);
-    
-    % Construct the compilation command for Windows (using g++).
-    % Quotes are added to paths to handle potential spaces.
-    compileCmd = sprintf('g++ -O3 "%s" -o "%s"', cppFile, exeFile);
-    
-    % Execute the command.
-    fprintf('Compiling %s...\n', [baseName, '.cpp']);
-    [status, cmdout] = system(compileCmd);
-    
-    % Check for compilation errors.
+for i = 1:numel(targets)
+    cppFile = fullfile(srcDir, [targets{i}, '.cpp']);
+    exeFile = fullfile(binDir, [targets{i}, '.exe']);
+
+    cmd = sprintf('g++ -O3 "%s" -o "%s"', cppFile, exeFile);
+    fprintf('Compiling %s.\n', cppFile);
+
+    [status, out] = system(cmd);
     if status ~= 0
-        error('Compilation failed for %s. Output:\n%s', baseName, cmdout);
-    else
-        fprintf('Success: %s created.\n', [baseName, '.exe']);
-        if ~isempty(cmdout)
-            disp(cmdout);
-        end
+        error('Compilation failed:\n%s', out);
     end
 end
 
-disp('Build process finished.');
-% =======================================================================
+%% Master TSV initialization.
+masterPath = fullfile(resultsDir, 'master.tsv');
+if ~exist(resultsDir, 'dir')
+    mkdir(resultsDir);
+end
 
-%% Configuration
-% Define the target samples, state range, and number of seeds.
-targetSamples = {'sample0'};
-stateRange = 2:6;
-numSeeds = 5; 
-% Executable paths (Assuming compiled binaries are in bin folder).
-exeBaumWelch = fullfile('..', 'bin', 'BaumWelch.exe');
-exeViterbi = fullfile('..', 'bin', 'Viterbi.exe');
+fidMaster = fopen(masterPath, 'w');
+fprintf(fidMaster, ...
+    'SampleName\tStates\tSeed\tSymbols\tTotalLen\tFinalLogLik\tIterations\tParams\tAIC\tBIC\tModelPath\tHistoryPath\n');
+fclose(fidMaster);
 
-% Output directory base.
-resultBaseDir = fullfile('..', 'results');
+%% Training loop.
+for s = 1:numel(samples)
+    sampleName = samples{s};
+    fprintf('Processing sample: %s\n', sampleName);
 
-%% Main Loop for Training
-% Iterate through each sample to train models.
-for sIdx = 1:length(targetSamples)
-    sampleName = targetSamples{sIdx};
-    fprintf('Processing %s...\n', sampleName);
+    sampleDataDir = fullfile(dataDir, sampleName);
+    sampleResDir  = fullfile(resultsDir, sampleName);
 
-    % Define data directory path relative to execution folder.
-    dataDir = fullfile('..', 'data', 'raw', 'samples', sampleName);
-    
-    % Create directory structure as defined in requirements.
-    % results/[SampleName]/models
-    % results/[SampleName]/history
-    % results/[SampleName]/viterbi
-    sampleDir = fullfile(resultBaseDir, sampleName);
-    modelsDir = fullfile(sampleDir, 'models');
-    historyDir = fullfile(sampleDir, 'history');
-    viterbiDir = fullfile(sampleDir, 'viterbi');
-    
-    if ~exist(modelsDir, 'dir'), mkdir(modelsDir); end
-    if ~exist(historyDir, 'dir'), mkdir(historyDir); end
+    modelDir   = fullfile(sampleResDir, 'models');
+    histDir    = fullfile(sampleResDir, 'history');
+    viterbiDir = fullfile(sampleResDir, 'viterbi');
+
+    if ~exist(modelDir, 'dir'), mkdir(modelDir); end
+    if ~exist(histDir, 'dir'), mkdir(histDir); end
     if ~exist(viterbiDir, 'dir'), mkdir(viterbiDir); end
-    
-    % Initialize master table data for this sample.
-    % Columns: SampleName, States, Seed, TotalLen, FinalLogLik, Iterations, Params, AIC, BIC, ModelPath, HistoryPath
-    masterData = {};
-    
-    for K = stateRange
-        for seed = 1:numSeeds
-            % Construct command for BaumWelch.exe.
-            % Usage: [SampleName] [OutputDir] [States] [Seed]
-            inputDir = fullfile('..', 'data', 'raw', 'samples', sampleName);
-            cmd = sprintf('%s "%s" "%s" %d %d', exeBaumWelch, inputDir, modelsDir, K, seed);
-            
-            % Execute and capture stdout.
-            [status, cmdout] = system(cmd);
-            
+
+    for K = stateList
+        bestLogLik = -inf;
+        bestSeed   = NaN;
+        bestModel  = '';
+
+        for seed = seedList
+            fprintf('Running BaumWelch: %s States=%d Seed=%d\n',sampleName, K, seed);
+
+            cmd = sprintf('"%s" "%s" "%s" %d %d', ...
+                exeBaumWelch, sampleDataDir, modelDir, K, seed);
+
+            [status, out] = system(cmd);
             if status ~= 0
-                warning('Execution failed for %s, K=%d, Seed=%d.', sampleName, K, seed);
+                warning('BaumWelch failed: K=%d Seed=%d.', K, seed);
                 continue;
             end
-            
-            % Parse stdout for HISTORY and RESULTS.
-            % History format: HISTORY [Step] [LogLik] [DError]
-            historyLines = regexp(cmdout, 'HISTORY\s+(\d+)\s+([-\d\.]+)\s+([-\d\.]+)', 'tokens');
-            
-            % Results format: RESULTS [SampleName] [States] [Seed] [Symbols] [TotalLen] [FinalLogLik] [Iterations]
-            resultLine = regexp(cmdout, 'RESULTS\s+(\S+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+([-\d\.]+)\s+(\d+)', 'tokens');
-            
-            if ~isempty(resultLine)
-                res = resultLine{1};
-                % Parse numeric values.
-                st = str2double(res{2});
-                sd = str2double(res{3});
-                M = str2double(res{4}); % Symbols
-                T = str2double(res{5}); % TotalLength
-                LL = str2double(res{6});
-                Iter = str2double(res{7});
-                
-                % Calculate AIC and BIC.
-                % Free parameters P = K*(K-1) + K*(M-1) + (K-1)
-                % Transitions + Emissions + Initial
-                P = st*(st-1) + st*(M-1) + (st-1);
-                
-                aic = -2 * LL + 2 * P;
-                bic = -2 * LL + P * log(T);
-                
-                % Define file paths.
-                modelFile = fullfile(modelsDir, sprintf('best_model_s%d_%d.txt', st, sd));
-                histFile = fullfile(historyDir, sprintf('history_s%d_%d.tsv', st, sd));
-                
-                % Save history to TSV.
-                fidHist = fopen(histFile, 'w');
-                fprintf(fidHist, 'Step\tLogLik\tDError\n');
-                for h = 1:length(historyLines)
-                    hDat = historyLines{h};
-                    fprintf(fidHist, '%s\t%s\t%s\n', hDat{1}, hDat{2}, hDat{3});
+
+            %% Save HISTORY.
+            histFile = fullfile(histDir, sprintf('history_s%d_%d.tsv', K, seed));
+            fidHist = fopen(histFile, 'w');
+            fprintf(fidHist, 'Step\tLogLik\tDError\n');
+
+            lines = splitlines(string(out));
+            for iLine = 1:numel(lines)
+                if startsWith(lines(iLine), 'HISTORY')
+                    vals = split(lines(iLine));
+                    fprintf(fidHist, '%s\t%s\t%s\n', vals(2), vals(3), vals(4));
                 end
-                fclose(fidHist);
-                
-                % Append to master data.
-                % SampleName, States, Seed, TotalLen, FinalLogLik, Iterations, Params, AIC, BIC, ModelPath, HistoryPath
-                masterData(end+1, :) = {sampleName, st, sd, T, LL, Iter, P, aic, bic, modelFile, histFile};
+            end
+            fclose(fidHist);
+
+            %% Parse RESULTS.
+            for iLine = 1:numel(lines)
+                if startsWith(lines(iLine), 'RESULTS')
+                    vals = split(lines(iLine));
+                    Symbols     = str2double(vals(5));
+                    TotalLen    = str2double(vals(6));
+                    FinalLogLik = str2double(vals(7));
+                    Iterations  = str2double(vals(8));
+
+                    fprintf('>RESULTS: LogLik=%.6g, Iter=%d\n', FinalLogLik, Iterations);
+
+
+                    % Parameter count: pi + A + B.
+                    params = (K - 1) + K * (K - 1) + K * (Symbols - 1);
+                    AIC = -2 * FinalLogLik + 2 * params;
+                    BIC = -2 * FinalLogLik + params * log(TotalLen);
+
+                    modelPath = fullfile(modelDir, sprintf('markov_output_s%d_%d.txt', K, seed));
+
+                    fidMaster = fopen(masterPath, 'a');
+                    fprintf(fidMaster, ...
+                        '%s\t%d\t%d\t%d\t%d\t%.6g\t%d\t%d\t%.6g\t%.6g\t%s\t%s\n', ...
+                        sampleName, K, seed, Symbols, TotalLen, ...
+                        FinalLogLik, Iterations, params, AIC, BIC, ...
+                        modelPath, histFile);
+                    fclose(fidMaster);
+
+                    if FinalLogLik > bestLogLik
+                        bestLogLik = FinalLogLik;
+                        bestSeed   = seed;
+                        bestModel  = modelPath;
+                    end
+                end
             end
         end
+
+        %% Save best model.
+        if ~isnan(bestSeed)
+            bestModelPath = fullfile(modelDir, sprintf('best_model_s%d.txt', K));
+            copyfile(bestModel, bestModelPath);
+
+            %% Run Viterbi using best model.
+            fprintf('Running Viterbi: %s States=%d BestSeed=%d\n',sampleName, K, bestSeed);
+
+            cmd = sprintf('"%s" "%s" "%s" "%s" %d %d', ...
+                exeViterbi, sampleDataDir, viterbiDir, bestModelPath, K, bestSeed);
+            [status, out] = system(cmd);
+        end
+        files = dir(fullfile(viterbiDir, '*_out.txt'));
+        fprintf('>Viterbi finished (%d sequences)\n', numel(files))
     end
-    
-    % Append results to the global master.tsv.
-    masterFile = fullfile(resultBaseDir, 'master.tsv');
-    writeHeader = ~exist(masterFile, 'file');
-    fidMaster = fopen(masterFile, 'a');
-    if writeHeader
-        fprintf(fidMaster, 'SampleName\tStates\tSeed\tTotalLen\tFinalLogLik\tIterations\tParams\tAIC\tBIC\tModelPath\tHistoryPath\n');
-    end
-    for r = 1:size(masterData, 1)
-        fprintf(fidMaster, '%s\t%d\t%d\t%d\t%.4f\t%d\t%d\t%.4f\t%.4f\t%s\t%s\n', ...
-            masterData{r,1}, masterData{r,2}, masterData{r,3}, masterData{r,4}, ...
-            masterData{r,5}, masterData{r,6}, masterData{r,7}, masterData{r,8}, masterData{r,9}, ...
-            masterData{r,10}, masterData{r,11});
-    end
-    fclose(fidMaster);
-    if isempty(masterData)
-        warning('No valid training data for %s. Skipping Viterbi.', sampleName);
-        continue;
-    end
-    %% Viterbi Decoding using the Best Model
-    % Find the model with Minimum BIC for this sample.
-    sampleTable = cell2table(masterData, 'VariableNames', ...
-        {'SampleName', 'States', 'Seed', 'TotalLen', 'FinalLogLik', 'Iterations', 'Params', 'AIC', 'BIC', 'ModelPath', 'HistoryPath'});
-    
-    [~, minIdx] = min(sampleTable.BIC);
-    bestModel = sampleTable(minIdx, :);
-    
-    fprintf('Best Model for %s: States=%d, Seed=%d (BIC=%.2f). Running Viterbi...\n', ...
-        sampleName, bestModel.States, bestModel.Seed, bestModel.BIC);
-    
-% Construct command for Viterbi.exe.
-    % Usage: [SampleName] [OutputDir] [ModelPath] [States] [Seed]
-    inputDir = fullfile('..', 'data', 'raw', 'samples', sampleName);
-    
-    cmdViterbi = sprintf('%s "%s" "%s" "%s" %d %d', ...
-    exeViterbi, inputDir, viterbiDir, bestModel.ModelPath{1}, bestModel.States, bestModel.Seed);
-    
-    [vStatus, vOut] = system(cmdViterbi);
-    if vStatus ~= 0
-        warning('Viterbi execution failed for %s.', sampleName);
-    else
-        % We can optionally parse vOut if needed, but the C++ code handles file output.
-        fprintf('Viterbi completed for %s.\n', sampleName);
-    end
-    
 end
 
-fprintf('All processes finished.\n');
+fprintf('All processes finished successfully.\n');

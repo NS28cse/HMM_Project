@@ -94,7 +94,6 @@ int HMMload(char *mn)
 			a[f][j] = loadval;
 			// printf("a[%d][%d] = %g\n", f, j, a[f][j]);
 		}
-		return 0;
 	}
 	printf("load loop end with %d State\n", i);
 	fclose(markovfile);
@@ -116,6 +115,7 @@ int HMMload(char *mn)
 		}
 		printf("\n");
 	}
+	return 0;
 }
 
 double viterbi(int samplenum)
