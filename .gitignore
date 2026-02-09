@@ -10,3 +10,4 @@ results/*
 
 exp_src/*.asv
 
+*[Cc][Oo][Pp][Yy]*

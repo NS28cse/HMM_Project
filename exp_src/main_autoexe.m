@@ -96,23 +96,29 @@ for s = 1:numel(samples)
             fidHist = fopen(histFile, 'w');
             fprintf(fidHist, 'Step\tLogLik\tDError\n');
 
-            lines = splitlines(string(out));
+            lines = strsplit(out, '\n');
+
             for iLine = 1:numel(lines)
-                if startsWith(lines(iLine), 'HISTORY')
-                    vals = split(lines(iLine));
-                    fprintf(fidHist, '%s\t%s\t%s\n', vals(2), vals(3), vals(4));
-                end
+                line = strtrim(lines{iLine});
+              if strncmp(line, 'HISTORY', 7)
+                vals = strsplit(line);
+                fprintf(fidHist, '%s\t%s\t%s\n', vals{2}, vals{3}, vals{4});
+              end
             end
+
             fclose(fidHist);
 
             %% Parse RESULTS.
             for iLine = 1:numel(lines)
-                if startsWith(lines(iLine), 'RESULTS')
-                    vals = split(lines(iLine));
-                    Symbols     = str2double(vals(5));
-                    TotalLen    = str2double(vals(6));
-                    FinalLogLik = str2double(vals(7));
-                    Iterations  = str2double(vals(8));
+              line = strtrim(lines{iLine});
+              if strncmp(line, 'RESULTS', 7)
+              vals = strsplit(line);
+
+                Symbols     = str2double(vals{5});
+                TotalLen    = str2double(vals{6});
+                FinalLogLik = str2double(vals{7});
+                Iterations  = str2double(vals{8});
+
 
                     fprintf('>RESULTS: LogLik=%.6g, Iter=%d\n', FinalLogLik, Iterations);
 
