@@ -228,7 +228,7 @@ int main(int argc, char *argv[])
 		// sprintf(tmp, "%d", i + 1)
 		// strncat(samplefilename, tmp, MAXLEN);
 		// strncat(samplefilename, "_out.txt", MAXLEN);	// samplefilename = "(sampledirname)/1234_out.txt"
-		sprintf(samplefilename, "%s/%d_out.txt", outputdir, i + 1); // The path format: [OutputDir]/[Index]_out.txt.
+		sprintf(samplefilename, "%s/s%d_%d_out.txt", outputdir, states, i + 1); // The path format: [OutputDir]/s[States]_[Index]_out.txt.
 
 		if ((samplefile = fopen(samplefilename, "w")) == NULL)
 			continue;

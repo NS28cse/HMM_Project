@@ -1,179 +1,441 @@
 % main_plot_figures.m
-% Figure generation script for HMM experiments.
-% This script generates all figures described in figure.txt.
+% Plot all figures required for the report (figure2.txt).
+% Target sample: sample0.
+% Figures are saved to results/figures/.
+%
+% MATLAB version: 2025a.
 
 clear; clc; close all;
 
-%% Path configuration.
-scriptDir = fileparts(mfilename('fullpath'));
-rootDir   = fileparts(scriptDir);
+%% Configuration.
+sampleName = 'sample4';
+stateList  = 2:6;
+resultDir  = fullfile('..', 'results');
+figureDir  = fullfile(resultDir, sampleName, 'figures');
 
-resultsDir = fullfile(rootDir, 'results');
-figDir     = fullfile(resultsDir, 'figures');
-sampleName = 'sample0';
-
-if ~exist(figDir, 'dir')
-    mkdir(figDir);
+if ~exist(figureDir, 'dir')
+    mkdir(figureDir);
 end
 
-masterPath = fullfile(resultsDir, 'master.tsv');
+fprintf('Generating figures for %s...\n', sampleName);
 
 %% Load master table.
-opts = detectImportOptions(masterPath, 'FileType', 'text');
-opts = setvartype(opts, 'char');
-T = readtable(masterPath, opts);
+masterPath = fullfile(resultDir, 'master.tsv');
+if ~exist(masterPath, 'file')
+    error('Master file not found: %s', masterPath);
+end
 
-% Filter sample.
+T = readtable(masterPath, 'FileType', 'text', 'Delimiter', '\t');
+
+% Filter target sample.
 T = T(strcmp(T.SampleName, sampleName), :);
 
-stateList = unique(T.States);
+if isempty(T)
+    error('No data found for sample: %s', sampleName);
+end
 
-%% ================================
-% Figure 1: Stability Analysis.
-% ================================
-figure;
+%% ------------------------------------------------------------
+% Figure 1: Sorted final log-likelihood (stability analysis).
+% Shows existence of local minima and justifies best seed selection.
+% -------------------------------------------------------------
+fprintf('  Generating Figure 1: Stability Analysis...\n');
+
+figure('Position', [100, 100, 800, 600], 'Color', 'w');
 hold on;
 
-for k = stateList'
-    idx = T.States == k;
-    ll  = T.FinalLogLik(idx);
-    ll  = sort(ll);
-    plot(ll, 'LineWidth', 1.5);
+set(gcf, 'Color', 'w');          % Figure background.
+ax = gca;
+set(ax, ...
+    'Color', 'w', ...            % Axes background.
+    'XColor', 'k', ...           % X-axis (ticks, labels).
+    'YColor', 'k', ...           % Y-axis.
+    'LineWidth', 1.2, ...
+    'FontSize', 11);
+
+% Define line styles and markers for monochrome plotting.
+lineStyles = {'-', '--', '-.', ':', '-'};
+markers = {'o', 's', '+', 'x', 'h'};
+
+for i = 1:length(stateList)
+    K = stateList(i);
+    idx = T.States == K;
+    loglik = T.FinalLogLik(idx);
+    loglik = sort(loglik, 'ascend');
+    
+    % Plot with distinct line style and marker for each K.
+    plot(1:length(loglik), loglik, 'k', ...
+         'LineStyle', lineStyles{1}, ...
+         'LineWidth', 1.5, ...
+         'Marker', markers{i}, ...
+         'MarkerSize', 5, ...
+         'MarkerFaceColor', 'k', ...
+         'DisplayName', sprintf('K=%d', K));
 end
 
-xlabel('Trial Index (Sorted)');
-ylabel('Final Log-Likelihood');
-legend(arrayfun(@(x) sprintf('K=%d', x), stateList, 'UniformOutput', false), ...
-       'Location', 'best');
+hold off;
+
+xlabel('Trial Index Sorted by Log-Likelihood', 'FontSize', 12);
+ylabel('Final Log-Likelihood', 'FontSize', 12);
+lgd = legend('Location', 'best', 'FontSize', 10);
+set(lgd, 'Color', 'w', 'TextColor', 'k', 'EdgeColor', 'k');
 grid on;
-set(gca, 'Box', 'on');
+box on;
 
-saveas(gcf, fullfile(figDir, 'fig1_stability_sorted.png'));
+exportgraphics(gcf, fullfile(figureDir, [sampleName, '_fig1_stability.png']));
+savefig(gcf, fullfile(figureDir, [sampleName, '_fig1_stability.fig']));
+exportgraphics(gcf, fullfile(figureDir, [sampleName, '_fig1_stability.pdf']));
 
-%% ================================
-% Figure 2: Learning Convergence.
-% ================================
-figure;
+%% ------------------------------------------------------------
+% Figure 2: Learning convergence curves (best seed only).
+% Demonstrates that Baum-Welch algorithm converges correctly.
+% -------------------------------------------------------------
+fprintf('  Generating Figure 2: Learning Convergence...\n');
+
+figure('Position', [100, 100, 800, 600], 'Color', 'w');
 hold on;
 
-for k = stateList'
-    idxK = T.States == k;
+set(gcf, 'Color', 'w');          % Figure background.
+ax = gca;
+set(ax, ...
+    'Color', 'w', ...            % Axes background.
+    'XColor', 'k', ...           % X-axis (ticks, labels).
+    'YColor', 'k', ...           % Y-axis.
+    'LineWidth', 1.2, ...
+    'FontSize', 11);
 
-    % Select best seed.
-    [~, id] = max(T.FinalLogLik(idxK));
-    row = T(idxK, :);
-    histPath = row.HistoryPath{id};
+for i = 1:length(stateList)
+    K = stateList(i);
+    
+    % Select best seed for each state size (maximum log-likelihood).
+    idxK = T.States == K;
+    subT = T(idxK, :);
+    [~, imax] = max(subT.FinalLogLik);
+    bestSeed = subT.Seed(imax);
+    
+    % Load convergence history.
+    historyPath = fullfile(resultDir, sampleName, 'history', ...
+        sprintf('history_s%d_%d.tsv', K, bestSeed));
+    
+    if ~exist(historyPath, 'file')
+        warning('History file not found: %s', historyPath);
+        continue;
+    end
+    
+    H = readtable(historyPath, 'FileType', 'text', 'Delimiter', '\t');
+    
+    % Plot error on semi-log scale.
+    errors = abs(H.DError);
+    errors(errors < 1e-300) = 1e-300;   % Numerical floor.
+    semilogy(H.Step, errors, 'k', ...
+             'LineStyle', lineStyles{1}, ...
+             'LineWidth', 1.5, ...
+             'Marker', markers{i}, ...
+             'MarkerSize', 5, ...
+             'MarkerFaceColor', 'k', ...
+             'DisplayName', sprintf('K=%d', K));
 
-    H = readtable(histPath, 'FileType', 'text');
-    semilogy(H.Step, abs(H.DError), 'LineWidth', 1.5);
+    set(gca, 'XScale', 'log');
 end
 
-xlabel('Iteration');
-ylabel('Log Error');
-legend(arrayfun(@(x) sprintf('K=%d (Best)', x), stateList, 'UniformOutput', false), ...
-       'Location', 'best');
+hold off;
+
+xlabel('Iteration', 'FontSize', 12);
+ylabel('Delta Log Likelihood Error', 'FontSize', 12);
+% legend('Location', 'northeast', 'FontSize', 10);
+lgd = legend('Location', 'best', 'FontSize', 10);
+set(lgd, 'Color', 'w', 'TextColor', 'k', 'EdgeColor', 'k');
+
 grid on;
-set(gca, 'Box', 'on');
+box on;
 
-saveas(gcf, fullfile(figDir, 'fig2_convergence.png'));
+exportgraphics(gcf, fullfile(figureDir, [sampleName, '_fig2_convergence.png']));
+savefig(gcf, fullfile(figureDir, [sampleName, '_fig2_convergence.fig']));
+exportgraphics(gcf, fullfile(figureDir, [sampleName, '_fig2_convergence.pdf']));
 
-%% ================================
-% Figure 3: Model Selection.
-% ================================
-figure;
+%% ------------------------------------------------------------
+% Figure 3: Model selection (LogLik vs AIC/BIC).
+% Demonstrates optimal state number selection based on information criteria.
+% -------------------------------------------------------------
+fprintf('  Generating Figure 3: Model Selection...\n');
 
-maxLL  = zeros(numel(stateList), 1);
-minAIC = zeros(numel(stateList), 1);
-minBIC = zeros(numel(stateList), 1);
+figure('Position', [100, 100, 800, 600], 'Color', 'w');
 
-for i = 1:numel(stateList)
-    k = stateList(i);
-    idx = T.States == k;
-    maxLL(i)  = max(T.FinalLogLik(idx));
-    minAIC(i) = min(T.AIC(idx));
-    minBIC(i) = min(T.BIC(idx));
-end
+set(gcf, 'Color', 'w');          % Figure background.
+ax = gca;
+set(ax, ...
+    'Color', 'w', ...            % Axes background.
+    'XColor', 'k', ...           % X-axis (ticks, labels).
+    'YColor', 'k', ...           % Y-axis.
+    'LineWidth', 1.2, ...
+    'FontSize', 11);
 
+% Calculate best metrics for each state.
+maxLogLik = arrayfun(@(k) max(T.FinalLogLik(T.States==k)), stateList);
+minAIC = arrayfun(@(k) min(T.AIC(T.States==k)), stateList);
+minBIC = arrayfun(@(k) min(T.BIC(T.States==k)), stateList);
+
+% Left axis: AIC and BIC.
 yyaxis left;
-plot(stateList, minAIC, '-o', 'LineWidth', 1.5); hold on;
-plot(stateList, minBIC, '-s', 'LineWidth', 1.5);
-ylabel('AIC / BIC');
+plot(stateList, minAIC, 'k-o', ...
+     'LineWidth', 2, 'MarkerSize', 8, 'MarkerFaceColor', 'k', ...
+     'DisplayName', 'AIC');
+hold on;
+plot(stateList, minBIC, 'k-s', ...
+     'LineWidth', 2, 'MarkerSize', 8, 'MarkerFaceColor', 'k', ...
+     'DisplayName', 'BIC');
+ylabel('AIC / BIC', 'FontSize', 12);
+ax = gca;
+ax.YAxis(1).Color = 'k';
 
+% Right axis: Max log-likelihood.
 yyaxis right;
-plot(stateList, maxLL, '-^', 'LineWidth', 1.5);
-ylabel('Max Log-Likelihood');
+plot(stateList, maxLogLik, 'k--h', ...
+     'LineWidth', 2, 'MarkerSize', 8, 'MarkerFaceColor', 'w', ...
+     'DisplayName', 'Max Log-Likelihood');
+ylabel('Max Log-Likelihood', 'FontSize', 12);
+ax.YAxis(2).Color = 'k';
 
-xlabel('Number of States');
-legend({'AIC', 'BIC', 'Log-Likelihood'}, 'Location', 'best');
+hold off;
+
+xlabel('Number of States', 'FontSize', 12);
+xticks(stateList);
+lgd = legend('AIC', 'BIC', 'Max Log-Likelihood', 'Location', 'best', 'FontSize', 10);
+set(lgd, 'Color', 'w', 'TextColor', 'k', 'EdgeColor', 'k');
+
 grid on;
-set(gca, 'Box', 'on');
+box on;
 
-saveas(gcf, fullfile(figDir, 'fig3_model_selection.png'));
+exportgraphics(gcf, fullfile(figureDir, [sampleName, '_fig3_model_selection.png']));
+savefig(gcf, fullfile(figureDir, [sampleName, '_fig3_model_selection.fig']));
+exportgraphics(gcf, fullfile(figureDir, [sampleName, '_fig3_model_selection.pdf']));
 
-%% ================================
-% Figure 4: Structure Analysis.
-% ================================
 
-% Determine optimal K by BIC.
-[~, idxBest] = min(minBIC);
-Kbest = stateList(idxBest);
+%% ------------------------------------------------------------
+% Figures 4 & 5: Structure analysis of the optimal model.
+% Shows transition and emission matrices of the best model.
+% Optimal model is selected based on minimum BIC (avoids overfitting).
+% -------------------------------------------------------------
+fprintf('  Generating Figures 4 & 5: Structure Analysis...\n');
 
-idx = T.States == Kbest;
-[~, id] = max(T.FinalLogLik(idx));
-row = T(idx, :);
+% Determine globally optimal model based on minimum BIC.
+[~, ibest] = min(T.AIC);
+bestK     = T.States(ibest);
+bestSeed  = T.Seed(ibest);
+bestAIC   = T.AIC(ibest);
 
-modelPath   = row.ModelPath{id};
-viterbiPath = fullfile(resultsDir, sampleName, 'viterbi', ...
-    sprintf('s%d_%d_out.txt', Kbest, row.Seed(id)));
+fprintf('    Optimal model: K=%d, Seed=%d, BIC=%.2f\n', bestK, bestSeed, bestAIC);
 
-%% Load HMM model.
-fid = fopen(modelPath, 'r');
-A = [];
-B = [];
-pi = [];
+% Locate model file.
+modelPath = fullfile(resultDir, sampleName, 'models', ...
+    sprintf('markov_output_s%d_%d.txt', bestK, bestSeed));
 
-while ~feof(fid)
-    line = strtrim(fgetl(fid));
-    if startsWith(line, 'State')
-        vals = split(line);
-        pi(end+1) = str2double(vals{3});
-        fgetl(fid); % Output
-        outLine = strtrim(ans);
-    end
-    if startsWith(line, 'Output')
-        B(end+1, :) = str2double(split(line(8:end)));
-    end
-    if startsWith(line, 'Transition')
-        A(end+1, :) = str2double(split(line(12:end)));
+if ~exist(modelPath, 'file')
+    error('Model file not found: %s', modelPath);
+end
+
+% Load HMM model.
+[A, B, pi] = load_hmm_model(modelPath);
+K = size(A, 1);
+M = size(B, 2);
+
+% --- Figure 4: Transition matrix A.
+fprintf('    Saving Figure 4: Transition Matrix A...\n');
+
+figure('Position', [100, 100, 700, 600], 'Color', 'w');
+
+imagesc(A);
+colormap(flipud(gray));
+colorbar;
+caxis([0, 1]);
+
+set(gcf, 'Color', 'w');          % Figure background.
+ax = gca;
+set(ax, ...
+    'Color', 'w', ...            % Axes background.
+    'XColor', 'k', ...           % X-axis (ticks, labels).
+    'YColor', 'k', ...           % Y-axis.
+    'LineWidth', 1.2, ...
+    'FontSize', 11);
+
+cb = colorbar;
+
+set(cb, ...
+    'Color', 'k', ...        % Label color.
+    'XColor', 'k', ...       % Tick color (horizontal).
+    'YColor', 'k', ...       % Tick color (vertical).
+    'FontSize', 11, ...
+    'FontWeight', 'bold', ...
+    'LineWidth', 1.2);
+
+
+% Add text annotations.
+for i = 1:K
+    for j = 1:K
+        val = A(i,j);
+        if val > 0.5
+            txtColor = 'w';   % Dark cell -> white text.
+        else
+            txtColor = 'k';   % Light cell -> black text.
+        end
+        text(j, i, sprintf('%.2f', val), ...
+     'HorizontalAlignment', 'center', ...
+     'Color', txtColor, ...
+     'FontSize', 10, 'FontWeight', 'bold');
+
     end
 end
-fclose(fid);
 
-%% Load Viterbi path.
-V = readmatrix(viterbiPath);
+% Configure axes.
+stateLabels = cellstr(char('A' + (0:K-1)'));
+xticks(1:K);
+yticks(1:K);
+xticklabels(stateLabels);
+yticklabels(stateLabels);
+xlabel('To State', 'FontSize', 12);
+ylabel('From State', 'FontSize', 12);
+axis square;
 
-figure;
+exportgraphics(gcf, fullfile(figureDir, [sampleName, '_fig4_matrix_A.png']));
+savefig(gcf, fullfile(figureDir, [sampleName, '_fig4_matrix_A.fig']));
+exportgraphics(gcf, fullfile(figureDir, [sampleName, '_fig4_matrix_A.pdf']));
 
-subplot(3,1,1);
-imagesc(A);
-colorbar;
-title('Transition Matrix A');
-xlabel('To State');
-ylabel('From State');
 
-subplot(3,1,2);
+% --- Figure 5: Emission matrix B.
+fprintf('    Saving Figure 5: Emission Matrix B...\n');
+
+figure('Position', [100, 100, 900, 600], 'Color', 'w');
+
 imagesc(B);
+colormap(flipud(gray));
 colorbar;
-title('Emission Matrix B');
-xlabel('Symbol');
-ylabel('State');
+caxis([0, 1]);
 
-subplot(3,1,3);
-plot(V, 'LineWidth', 1.5);
-xlabel('Time');
-ylabel('State');
-title('Viterbi Path');
+set(gcf, 'Color', 'w');          % Figure background.
+ax = gca;
+set(ax, ...
+    'Color', 'w', ...            % Axes background.
+    'XColor', 'k', ...           % X-axis (ticks, labels).
+    'YColor', 'k', ...           % Y-axis.
+    'LineWidth', 1.2, ...
+    'FontSize', 11);
 
-saveas(gcf, fullfile(figDir, 'fig4_structure_analysis.png'));
+cb = colorbar;
+
+set(cb, ...
+    'Color', 'k', ...        % Label color.
+    'XColor', 'k', ...       % Tick color (horizontal).
+    'YColor', 'k', ...       % Tick color (vertical).
+    'FontSize', 11, ...
+    'FontWeight', 'bold', ...
+    'LineWidth', 1.2);
+
+% Add text annotations.
+for i = 1:K
+    for j = 1:M
+        val = B(i,j);
+        if val > 0.5
+            txtColor = 'w';   % Dark cell -> white text.
+        else
+            txtColor = 'k';   % Light cell -> black text.
+        end
+
+        text(j, i, sprintf('%.2f', val), ...
+        'HorizontalAlignment', 'center', ...
+        'Color', txtColor, ...
+        'FontSize', 10, 'FontWeight', 'bold');
+    end
+end
+
+% Configure axes.
+xticks(1:M);
+yticks(1:K);
+xticklabels(0:M-1);  % Symbols are 0-indexed.
+yticklabels(stateLabels);
+xlabel('Output Symbol', 'FontSize', 12);
+ylabel('State', 'FontSize', 12);
+
+exportgraphics(gcf, fullfile(figureDir, [sampleName, '_fig5_matrix_B.png']));
+savefig(gcf, fullfile(figureDir, [sampleName, '_fig5_matrix_B.fig']));
+exportgraphics(gcf, fullfile(figureDir, [sampleName, '_fig5_matrix_B.pdf']));
 
 fprintf('All figures generated successfully.\n');
+fprintf('Output directory: %s\n', figureDir);
+
+%% ============================================================
+% Local functions.
+% ============================================================
+
+function [A, B, pi] = load_hmm_model(filename)
+% Load HMM parameters from a model text file.
+% 
+% Input:
+%   filename - Path to the HMM model file.
+% 
+% Output:
+%   A  - Transition probability matrix (K x K).
+%   B  - Emission probability matrix (K x M).
+%   pi - Initial state probability vector (K x 1).
+
+fid = fopen(filename, 'r');
+if fid == -1
+    error('Cannot open file: %s', filename);
+end
+
+% Initialize variables.
+states = {};
+pi = [];
+outputs = {};
+transitions = {};
+
+% Parse the file line by line.
+while ~feof(fid)
+    line = fgetl(fid);
+    
+    if ~ischar(line) || isempty(strtrim(line))
+        continue;
+    end
+    
+    % Split line into tokens.
+    tokens = strsplit(strtrim(line));
+    if isempty(tokens)
+        continue;
+    end
+    
+    keyword = tokens{1};
+    
+    if strcmp(keyword, 'State')
+        % State line: State A 0.5
+        stateName = tokens{2};
+        initProb = str2double(tokens{3});
+        states{end+1} = stateName; %#ok<AGROW>
+        pi(end+1) = initProb; %#ok<AGROW>
+        
+    elseif strcmp(keyword, 'Output')
+        % Output line: Output 0.31 0.48 0.21
+        outputProbs = cellfun(@str2double, tokens(2:end));
+        outputs{end+1} = outputProbs; %#ok<AGROW>
+        
+    elseif strcmp(keyword, 'Transition')
+        % Transition line: Transition 0.9 0.1
+        transProbs = cellfun(@str2double, tokens(2:end));
+        transitions{end+1} = transProbs; %#ok<AGROW>
+    end
+end
+
+fclose(fid);
+
+% Convert cell arrays to matrices.
+K = length(states);
+M = length(outputs{1});
+
+A = zeros(K, K);
+B = zeros(K, M);
+
+for i = 1:K
+    A(i, :) = transitions{i};
+    B(i, :) = outputs{i};
+end
+
+pi = pi(:);  % Convert to column vector.
+
+end
